@@ -1,0 +1,19 @@
+name: buzzio_crypto
+description: >
+  Educational reference implementation of Buzzio-style messaging cryptography
+  (X3DH, Double Ratchet, sealed sender envelope, sender keys, file AES-GCM).
+  Not the production Buzzio app and not wire-compatible with live servers.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  bip39: ^1.0.6
+  pointycastle: ^3.9.1
+  cryptography: ^2.7.0
+  crypto: ^3.0.6
+
+dev_dependencies:
+  test: ^1.25.0

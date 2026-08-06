@@ -1,0 +1,5 @@
+# Ignore build artifacts if this folder is copied to its own git repo.
+.dart_tool/
+.packages
+pubspec.lock
+build/

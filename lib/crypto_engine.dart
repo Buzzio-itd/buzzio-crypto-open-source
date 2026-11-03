@@ -183,7 +183,10 @@ class CryptoEngine {
     };
   }
 
-  /// Inbound DH ratchet step only (do not chain a send-step here).
+  /// Inbound DH ratchet step only (existing local DH priv × peer's new pub).
+  ///
+  /// Must mirror the peer's [dhRatchetSendStep]. Chaining a send-step here
+  /// desynchronises the root chain and every later message fails to decrypt.
   Map<String, Uint8List> dhRatchetReceiveStep({
     required Uint8List rootKey,
     required Uint8List ourRatchetPriv,
@@ -309,8 +312,13 @@ class CryptoEngine {
     };
   }
 
-  Uint8List encryptFast(Uint8List plaintext, Uint8List messageKey) {
-    final encryptedMap = encryptGCM(plaintext, messageKey);
+  /// AES-GCM with optional associated data; returns nonce(12) || ct || tag(16).
+  Uint8List encryptFast(
+    Uint8List plaintext,
+    Uint8List messageKey, {
+    Uint8List? aad,
+  }) {
+    final encryptedMap = encryptGCM(plaintext, messageKey, aad: aad);
     final nonce = encryptedMap['nonce']!;
     final ciphertext = encryptedMap['ciphertext']!;
     final result = Uint8List(nonce.length + ciphertext.length);
@@ -319,11 +327,16 @@ class CryptoEngine {
     return result;
   }
 
-  Uint8List? decryptFast(Uint8List encryptedBlob, Uint8List messageKey) {
+  /// Inverse of [encryptFast]. [aad] must match the sender's exactly.
+  Uint8List? decryptFast(
+    Uint8List encryptedBlob,
+    Uint8List messageKey, {
+    Uint8List? aad,
+  }) {
     if (encryptedBlob.length < 12) return null;
     final nonce = encryptedBlob.sublist(0, 12);
     final ciphertext = encryptedBlob.sublist(12);
-    return decryptGCM(ciphertext, messageKey, nonce);
+    return decryptGCM(ciphertext, messageKey, nonce, aad: aad);
   }
 
   Map<String, Uint8List> generatePreKeyBundle(int count) {
@@ -578,10 +591,18 @@ class CryptoEngine {
     return utf8.decode(plaintextBytes);
   }
 
-  Map<String, Uint8List> encryptGCM(Uint8List plaintext, Uint8List key) {
+  /// AES-256-GCM, random 96-bit nonce, 128-bit tag, optional [aad].
+  Map<String, Uint8List> encryptGCM(
+    Uint8List plaintext,
+    Uint8List key, {
+    Uint8List? aad,
+  }) {
     final nonce = _generateRandomNonce(12);
     final gcm = GCMBlockCipher(AESEngine())
-      ..init(true, AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)));
+      ..init(
+        true,
+        AEADParameters(KeyParameter(key), 128, nonce, aad ?? Uint8List(0)),
+      );
     final ciphertext = gcm.process(plaintext);
     return {
       'nonce': nonce,
@@ -589,11 +610,19 @@ class CryptoEngine {
     };
   }
 
-  Uint8List? decryptGCM(Uint8List ciphertext, Uint8List key, Uint8List nonce) {
+  /// Returns null on tag/AAD mismatch.
+  Uint8List? decryptGCM(
+    Uint8List ciphertext,
+    Uint8List key,
+    Uint8List nonce, {
+    Uint8List? aad,
+  }) {
     try {
       final gcm = GCMBlockCipher(AESEngine())
         ..init(
-            false, AEADParameters(KeyParameter(key), 128, nonce, Uint8List(0)));
+          false,
+          AEADParameters(KeyParameter(key), 128, nonce, aad ?? Uint8List(0)),
+        );
       return gcm.process(ciphertext);
     } catch (_) {
       return null;
@@ -642,6 +671,40 @@ class CryptoEngine {
     final hkdf = HKDFKeyDerivator(SHA256Digest())
       ..init(HkdfParameters(sessionKey, 32, utf8.encode('qr_slot_v1'), salt));
     return hkdf.process(Uint8List(0));
+  }
+
+  /// v2 per-lane key from an ECDH secret (creator × scanner), so other
+  /// scanners of the same QR cannot derive it. salt = slotIndex BE32,
+  /// info = `qr_slot_v2`.
+  static Uint8List deriveQrSlotKeyV2(Uint8List sharedSecret, int slotIndex) {
+    final salt =
+        (ByteData(4)..setUint32(0, slotIndex, Endian.big)).buffer.asUint8List();
+    final hkdf = HKDFKeyDerivator(SHA256Digest())
+      ..init(HkdfParameters(sharedSecret, 32, utf8.encode('qr_slot_v2'), salt));
+    return hkdf.process(Uint8List(0));
+  }
+
+  /// Per-message key (salt = messageId, info = `qr_msg_v1`) so a captured
+  /// blob cannot be replayed under a different message id.
+  static Uint8List deriveQrMessageKey(Uint8List slotKey, String messageId) {
+    final hkdf = HKDFKeyDerivator(SHA256Digest())
+      ..init(HkdfParameters(
+        slotKey,
+        32,
+        utf8.encode('qr_msg_v1'),
+        utf8.encode(messageId),
+      ));
+    return hkdf.process(Uint8List(0));
+  }
+
+  /// AES-GCM associated data binding lane, sender and message id.
+  static Uint8List qrMessageAad({
+    required int slotIndex,
+    required String sender,
+    required String messageId,
+  }) {
+    return Uint8List.fromList(
+        utf8.encode('qr_v2|$slotIndex|$sender|$messageId'));
   }
 
   static String? decryptQrBlob(String blob, Uint8List slotKey) {

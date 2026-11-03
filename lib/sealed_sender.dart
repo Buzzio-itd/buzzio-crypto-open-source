@@ -134,6 +134,7 @@ class SealedSender {
       if (expMs == null || DateTime.now().millisecondsSinceEpoch > expMs) {
         return false;
       }
+      // Canonical body key order must match the issuer: v, gid, ik, exp.
       final canonical = utf8.encode(jsonEncode({
         'v': 2,
         'gid': gid,

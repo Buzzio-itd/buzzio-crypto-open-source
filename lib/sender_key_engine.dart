@@ -165,6 +165,11 @@ class SenderKeyEngine {
     ]);
   }
 
+  /// Verifies a sender-key ECDSA signature (64-byte r || s).
+  bool verifySignature(
+          Uint8List data, Uint8List signature, Uint8List pubKeyBytes) =>
+      _ecdsaVerify(data, signature, pubKeyBytes);
+
   bool _ecdsaVerify(
       Uint8List data, Uint8List signature, Uint8List pubKeyBytes) {
     try {

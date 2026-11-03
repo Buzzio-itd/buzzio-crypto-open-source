@@ -8,3 +8,6 @@ export 'sealed_sender.dart';
 export 'sender_key_engine.dart';
 export 'file_encryption.dart';
 export 'file_chunk_encryption.dart';
+export 'room_transport_seal.dart';
+export 'security_code_fingerprint.dart';
+export 'seed_wrap_key.dart';

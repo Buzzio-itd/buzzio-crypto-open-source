@@ -14,6 +14,8 @@ This is **not** the Buzzio mobile app. The production app, Firebase delivery, Cl
 | Omitted | Why |
 |---------|-----|
 | Production PBKDF2 salts / HKDF peppers | Offline mnemonic attacks |
+| Account sign-in credential derivation | Account infrastructure |
+| Production wrap-key labels (vault / backup) | App-specific; examples ship instead |
 | Identity / Firestore key lookup | App infrastructure |
 | Sealed delivery Cloud Functions | Live abuse / routing surface |
 | Real CA private key | Would break trust for all clients |
@@ -31,6 +33,26 @@ Security of messaging crypto must not depend on hiding the algorithms ([Kerckhof
         ├── Sealed envelope (ephemeral ECDH → HKDF → AES-GCM)
         └── Sender keys (groups): HMAC chain + AES-GCM + ECDSA
 ```
+
+## Modules
+
+| File | What it shows |
+|------|---------------|
+| `crypto_engine.dart` | Identity derivation, ECDH, X3DH, Double Ratchet, AES-GCM (optional associated data), ECDSA, QR lane keys (v1 shared, v2 per-lane ECDH + per-message key + AAD) |
+| `sealed_sender.dart` | Sealed envelope and ECDSA sender certificates (demo CA) |
+| `sender_key_engine.dart` | Group sender keys: HMAC chain, AES-GCM, ECDSA signatures |
+| `file_encryption.dart` / `file_chunk_encryption.dart` | Whole-file and per-chunk AES-GCM |
+| `room_transport_seal.dart` | AES-GCM JSON envelope under a rotating room key (`kv` = key generation) |
+| `security_code_fingerprint.dart` | 60-digit safety numbers from two public keys |
+| `seed_wrap_key.dart` | HKDF wrap keys from the identity master key (example labels) |
+
+## Key custody (app side, not in this package)
+
+The app keeps the 12-word phrase only in the phone's hardware-backed OS vault
+(Android Keystore StrongBox/TEE, iOS Secure Enclave), behind the device
+biometric / passcode prompt. If the vault cannot store it, the app refuses
+instead of falling back to software storage. That native code is part of the
+closed app; this package only covers the algorithms.
 
 HKDF info strings in **this** package use generic labels (for example `sealed_sender_v1`). They are **not** guaranteed to match live Buzzio wire format.
 

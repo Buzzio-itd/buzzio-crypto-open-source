@@ -3,7 +3,7 @@ description: >
   Educational reference implementation of Buzzio-style messaging cryptography
   (X3DH, Double Ratchet, sealed sender envelope, sender keys, file AES-GCM).
   Not the production Buzzio app and not wire-compatible with live servers.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:
